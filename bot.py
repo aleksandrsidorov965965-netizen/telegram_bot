@@ -219,6 +219,20 @@ def main() -> None:
     print("🤖 Бот запущен с поддержкой API text.ru! Нажми Ctrl+C для остановки.")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+import threading
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "Бот работает!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+# Запускаем Flask в отдельном потоке
+threading.Thread(target=run_flask).start()
 if __name__ == '__main__':
     main()
     
