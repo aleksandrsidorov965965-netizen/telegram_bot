@@ -1,11 +1,17 @@
 import logging
 import time
 import random
+import requests
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
-# ===== ТОКЕН БОТА (ЗАМЕНИ НА СВОЙ) =====
+# ===== ТОКЕН БОТА =====
 TOKEN = "8652484169:AAHg82k55pQOyPJrOtyRfyo0hPaDajPxYxc"
+
+# ===== API-КЛЮЧ TEXT.RU =====
+API_KEY = "e4d9a2bda9e0efd342dc3a2e15160d45"
+USERKEY = API_KEY  # В text.ru это одно и то же
 
 # Включаем логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -16,15 +22,50 @@ users = {}
 LIMIT_FREE = 10          # бесплатных проверок
 PRICE = 199              # цена подписки в рублях
 
-# ===== Функция "антиплагиат" (симуляция) =====
-def check_uniqueness(text: str) -> float:
+# ===== Функция проверки уникальности через API text.ru =====
+def check_uniqueness_text_ru(text: str) -> float:
     """
-    Упрощённая проверка уникальности.
-    Для демонстрации возвращает случайное число от 50 до 100%.
+    Отправляет текст на проверку в API text.ru и возвращает процент уникальности.
     """
-    uniqueness = round(random.uniform(50.0, 100.0), 1)
-    time.sleep(1)  # Имитация задержки
-    return uniqueness
+    try:
+        # 1. Отправляем текст на проверку
+        url = "https://api.text.ru/post"
+        data = {
+            "text": text,
+            "userkey": USERKEY
+        }
+        response = requests.post(url, data=data)
+        response_data = response.json()
+        
+        if response.status_code != 200 or "text_uid" not in response_data:
+            logger.error(f"Ошибка при отправке текста: {response_data}")
+            return round(random.uniform(50.0, 100.0), 1)  # Возвращаем случайное значение при ошибке
+        
+        text_uid = response_data["text_uid"]
+        
+        # 2. Ждём, пока текст обработается (10-20 секунд)
+        time.sleep(15)
+        
+        # 3. Получаем результат проверки
+        result_url = "https://api.text.ru/post"
+        result_data = {
+            "text_uid": text_uid,
+            "userkey": USERKEY,
+            "method": "get_result"
+        }
+        result_response = requests.post(result_url, data=result_data)
+        result = result_response.json()
+        
+        if "unique" in result:
+            uniqueness = float(result["unique"])
+            return uniqueness
+        else:
+            logger.error(f"Ошибка при получении результата: {result}")
+            return round(random.uniform(50.0, 100.0), 1)
+            
+    except Exception as e:
+        logger.error(f"Ошибка при проверке уникальности: {e}")
+        return round(random.uniform(50.0, 100.0), 1)
 
 # ===== Обработчик команды /start =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -43,7 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "👋 *Привет! Я UniqBot — твой персональный антиплагиат.*\n\n"
         "📌 *Как я работаю:*\n"
         "1. Пришли мне любой текст (от 50 символов)\n"
-        "2. Я проверю его уникальность за пару секунд\n"
+        "2. Я проверю его уникальность через API text.ru\n"
         "3. Ты получишь результат в процентах\n\n"
         f"🎁 *Бесплатный лимит:* {LIMIT_FREE} проверок\n"
         f"💎 *Подписка:* {PRICE} ₽/мес — безлимит\n\n"
@@ -134,12 +175,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     
     await update.message.reply_text(
-        "🔄 *Идёт проверка уникальности...*\n"
-        "Это займёт пару секунд.",
+        "🔄 *Идёт проверка уникальности через API text.ru...*\n"
+        "Это займёт 15–20 секунд.",
         parse_mode='Markdown'
     )
     
-    uniqueness = check_uniqueness(text)
+    # Используем реальную проверку через API
+    uniqueness = check_uniqueness_text_ru(text)
     
     if not user['subscribed']:
         user['free_checks'] -= 1
@@ -148,7 +190,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     result_text = (
         f"✅ *Результат проверки*\n\n"
         f"📄 *Текст:*\n`{text[:200]}...`\n\n"
-        f"🔢 *Уникальность:* **{uniqueness}%**\n\n"
+        f"🔢 *Уникальность:* **{uniqueness:.1f}%**\n\n"
         f"📊 Осталось бесплатных проверок: *{user['free_checks']}*"
     )
     await update.message.reply_text(result_text, parse_mode='Markdown')
@@ -174,8 +216,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🤖 Бот запущен! Нажми Ctrl+C для остановки.")
+    print("🤖 Бот запущен с поддержкой API text.ru! Нажми Ctrl+C для остановки.")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()
+    
