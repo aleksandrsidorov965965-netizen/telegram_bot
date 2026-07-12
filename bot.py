@@ -2,7 +2,6 @@ import logging
 import time
 import random
 import re
-import asyncio
 from collections import Counter
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -83,13 +82,10 @@ def check_uniqueness_text_ru(text: str) -> float:
 
 # ===== Проверка на спам =====
 def is_spam(text: str) -> bool:
-    # Слишком длинный текст
     if len(text) > 5000:
         return True
-    # Слишком много повторяющихся символов
     if len(set(text)) < 10 and len(text) > 100:
         return True
-    # Слишком мало уникальных слов
     words = text.split()
     if len(words) > 10 and len(set(words)) < 3:
         return True
@@ -127,6 +123,8 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
 
 # ===== Обработчик команды /start =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Очищаем старые запросы для этого пользователя
+    context.user_data.clear()
     await show_main_menu(update, context)
 
 # ===== Обработчик нажатий на кнопки =====
@@ -312,7 +310,6 @@ def main() -> None:
     
     print("🤖 Бот запущен с поддержкой API text.ru и SEO-анализом! Нажми Ctrl+C для остановки.")
     
-    # Защита от конфликтов
     try:
         application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Conflict as e:
